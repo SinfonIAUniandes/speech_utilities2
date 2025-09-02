@@ -1,12 +1,11 @@
 import rclpy
 from rclpy.node import Node
-import numpy as np
-import threading
-import time
-
 # Import the executor and callback group classes
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
+import numpy as np
+import threading
+import time
 
 # Importar los tipos de mensajes y servicios necesarios
 from naoqi_bridge_msgs.msg import AudioBuffer
@@ -33,45 +32,38 @@ class MicrophoneNode(Node):
         self.declare_parameter('audio_topic', '/mic')
         self.declare_parameter('sample_rate', 16000)
         self.declare_parameter('vad_threshold', 0.5)
-
-        # El nombre del robot
         self.declare_parameter('robot_name', 'robot')
 
         if robot_name is not None:
-            # si se pasa por constructor, también actualizamos el parámetro local
             self.robot_name = str(robot_name)
-            # opcional: establecer el parámetro en el servidor de parámetros
             try:
                 self.set_parameters([rclpy.parameter.Parameter('robot_name', rclpy.Parameter.Type.STRING, self.robot_name)])
             except Exception:
-                # no crítico si falla (dependiendo de la versión de rclpy)
                 pass
         else:
             self.robot_name = self.get_parameter('robot_name').get_parameter_value().string_value
-
         
         audio_topic = self.get_parameter('audio_topic').get_parameter_value().string_value
         self.sample_rate = self.get_parameter('sample_rate').get_parameter_value().integer_value
         self.vad_threshold = self.get_parameter('vad_threshold').get_parameter_value().double_value
 
         # --- Variables de estado ---
-        self.is_listening = False  # Controla si se debe guardar el audio en el buffer
-        self.is_person_speaking = False # Estado actual del VAD
-        self.last_speech_timestamp = self.get_clock().now() # Para detectar fin de locución
-        self.audio_buffer = [] # Buffer para almacenar el audio durante la grabación
-        self.service_lock = threading.Lock() # Para evitar llamadas concurrentes al servicio
+        self.is_listening = False
+        self.is_person_speaking = False
+        self.last_speech_timestamp = self.get_clock().now()
+        self.audio_buffer = []
+        self.service_lock = threading.Lock()
+
+        # --- Lógica de Negocio (Platzhalter) ---
+        self.get_logger().info("Modelos de VAD y transcripción (simulados) cargados.")
 
         # --- Callback Groups ---
         # Create a reentrant callback group for the services. This allows service
         # callbacks to run in parallel with the subscription callback, preventing blocking.
         self.service_callback_group = ReentrantCallbackGroup()
 
-        # --- Lógica de Negocio (Platzhalter) ---
-        # self.vad_model = audio_processing.load_vad_model()
-        # self.transcription_model = transcription_clients.load_model()
-        self.get_logger().info("Modelos de VAD y transcripción (simulados) cargados.")
-
         # --- Suscriptores ---
+        # The subscription will use the default (mutually exclusive) callback group.
         self.audio_subscription = self.create_subscription(
             AudioBuffer,
             audio_topic,
@@ -80,6 +72,7 @@ class MicrophoneNode(Node):
         self.get_logger().info(f"Suscrito al tópico de audio: '{audio_topic}'")
 
         # --- Servicios ---
+        # Assign the new callback group to the services.
         self.speech_to_text_service = self.create_service(
             SpeechToText,
             '~/speech_to_text',
@@ -99,20 +92,18 @@ class MicrophoneNode(Node):
         Callback que se ejecuta cada vez que llega un mensaje de audio.
         Realiza VAD y, si está activo, guarda el audio en un buffer.
         """
-        # Convertir el buffer de bytes a un array de numpy
-        # Asumimos formato int16, común en micrófonos
         audio_data = np.frombuffer(msg.data, dtype=np.int16)
-        # 1. Lógica de Detección de Actividad de Voz (VAD)
-        # TODO: Llamar a la función de VAD real desde audio_processing.py
-        # confidence = audio_processing.get_vad_confidence(audio_data, self.sample_rate, self.vad_model)
-        confidence = 0.0 # Platzhalter
+        
+        # 1. VAD Logic (Placeholder)
+        confidence = 0.0 
+        # print(f"Audio callback running. Buffer size: {len(audio_data)}") # Uncomment for debugging
         if confidence > self.vad_threshold:
             self.is_person_speaking = True
             self.last_speech_timestamp = self.get_clock().now()
         else:
             self.is_person_speaking = False
 
-        # 2. Lógica de grabación
+        # 2. Recording Logic
         if self.is_listening:
             self.audio_buffer.extend(audio_data.tolist())
 
@@ -130,16 +121,18 @@ class MicrophoneNode(Node):
             self.audio_buffer = []
             self.is_listening = True
 
-            # TODO: Implementar lógica de grabación basada en VAD si request.duration es 0.
-            # Por ahora, simulamos una grabación de duración fija.
             record_duration = float(request.duration if request.duration > 0 else 5.0)
-            self.get_logger().info(f"Grabando por {record_duration} segundos...")
-            time.sleep(record_duration)
-            self.get_logger().info("Grabación finalizada.")
+            self.get_logger().info(f"Grabando por {record_duration} segundos... (Audio callback seguirá corriendo en segundo plano)")
 
+            # Because this service runs in its own thread, time.sleep() will NOT
+            # block the audio_callback. The buffer will be filled in the background.
+            time.sleep(record_duration)
+            
+            self.get_logger().info("Grabación finalizada.")
             self.is_listening = False
+            
             file_path = "/tmp/"
-            save_recording(self.audio_buffer,saving_path=file_path,file_name=f"{request.file_name}.wav",sample_rate=self.sample_rate)
+            save_recording(self.audio_buffer, saving_path=file_path, file_name=f"{request.file_name}.wav", sample_rate=self.sample_rate)
             self.get_logger().info(f"Audio guardado en: {file_path}speech_recordings/{request.file_name}")
 
             response.success = True
@@ -168,22 +161,17 @@ class MicrophoneNode(Node):
             self.audio_buffer = []
             self.is_listening = True
 
-            # TODO: Lógica de grabación (esperar a que el usuario hable y termine)
-            # Por ahora, simulamos una grabación de 3 segundos.
-            self.get_logger().info("Grabando...")
-            rclpy.spin_once(self, timeout_sec=3.0) 
+            self.get_logger().info("Grabando por 3 segundos...")
+            # Wait for 3 seconds. The audio_callback will continue running and filling the buffer.
+            time.sleep(3.0) 
             self.get_logger().info("Grabación finalizada.")
 
             self.is_listening = False
             
-            # TODO: 1. Guardar el audio grabado usando una función de audio_processing.py
-            # file_path = audio_processing.save_recording(self.audio_buffer, "temp_record.wav", self.sample_rate)
-            file_path = "/tmp/temp_record.wav" # Platzhalter
+            file_path = "/tmp/temp_record.wav" # Placeholder
             self.get_logger().info(f"Audio guardado en: {file_path}")
 
-            # TODO: 2. Transcribir el audio usando una función de transcription_clients.py
-            # transcription = transcription_clients.transcribe(file_path, self.transcription_model, lang=request.lang)
-            transcription = "Esta es una transcripción de prueba." # Platzhalter
+            transcription = "Esta es una transcripción de prueba." # Placeholder
             self.get_logger().info(f"Transcripción: '{transcription}'")
 
             response.transcription = transcription
@@ -202,12 +190,13 @@ class MicrophoneNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     microphone_node = MicrophoneNode()
-
+    
     # Use a MultiThreadedExecutor to allow callbacks to run on different threads.
     # This is crucial for preventing the long-running services from blocking
     # the high-frequency audio subscription callback.
     executor = MultiThreadedExecutor()
     executor.add_node(microphone_node)
+    
     try:
         # Spin the executor to process callbacks from all nodes.
         executor.spin()
