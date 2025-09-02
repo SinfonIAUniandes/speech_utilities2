@@ -1,2 +1,4 @@
 numpy
 soundfile
+openai-whisper
+torch

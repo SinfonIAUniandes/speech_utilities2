@@ -11,8 +11,14 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 # Importar los tipos de mensajes y servicios necesarios
 from naoqi_bridge_msgs.msg import AudioBuffer
 from speech_msgs2.srv import SpeechToText, RecordAudio
+from naoqi_utilities_msgs.msg import LedParameters
+from naoqi_utilities_msgs.srv import SetVolume, GetVolume
+
+from std_srvs.srv import SetBool
 
 from .logic.audio_processing import save_recording
+from .logic.voice_activity_detection import detect_speech
+from .logic.speech_2_text import transcribe
 # Importar los módulos de lógica (aún no implementados)
 # from .logic import audio_processing
 # from .logic import transcription_clients
@@ -56,8 +62,8 @@ class MicrophoneNode(Node):
 
         # --- Variables de estado ---
         self.is_listening = False  # Controla si se debe guardar el audio en el buffer
-        self.is_person_speaking = False # Estado actual del VAD
-        self.last_speech_timestamp = self.get_clock().now() # Para detectar fin de locución
+        self.person_speaking = False # Estado actual del VAD
+        self.last_speaking_instance = 0 # Para detectar fin de locución
         self.audio_buffer = [] # Buffer para almacenar el audio durante la grabación
         self.service_lock = threading.Lock() # Para evitar llamadas concurrentes al servicio
 
@@ -66,10 +72,10 @@ class MicrophoneNode(Node):
         # callbacks to run in parallel with the subscription callback, preventing blocking.
         self.service_callback_group = ReentrantCallbackGroup()
 
-        # --- Lógica de Negocio (Platzhalter) ---
-        # self.vad_model = audio_processing.load_vad_model()
-        # self.transcription_model = transcription_clients.load_model()
-        self.get_logger().info("Modelos de VAD y transcripción (simulados) cargados.")
+        self.leds_publisher = self.create_publisher(LedParameters, '/set_leds', 10)
+        self.toggle_blinking_client = self.create_client(SetBool, '/naoqi_miscellaneous_node/toggle_blinking')
+        self.set_volume_client = self.create_client(SetVolume, '/naoqi_speech_node/set_volume')
+        self.get_volume_client = self.create_client(GetVolume, '/naoqi_speech_node/get_volume')
 
         # --- Suscriptores ---
         self.audio_subscription = self.create_subscription(
@@ -103,18 +109,31 @@ class MicrophoneNode(Node):
         # Asumimos formato int16, común en micrófonos
         audio_data = np.frombuffer(msg.data, dtype=np.int16)
         # 1. Lógica de Detección de Actividad de Voz (VAD)
-        # TODO: Llamar a la función de VAD real desde audio_processing.py
-        # confidence = audio_processing.get_vad_confidence(audio_data, self.sample_rate, self.vad_model)
-        confidence = 0.0 # Platzhalter
-        if confidence > self.vad_threshold:
-            self.is_person_speaking = True
-            self.last_speech_timestamp = self.get_clock().now()
+        
+        self.last_speaking_instance = detect_speech(audio_buffer=msg.data,sample_rate=self.sample_rate,last_speaking_instance=self.last_speaking_instance)
+        if self.last_speaking_instance == 0:
+            self.person_speaking = True
         else:
-            self.is_person_speaking = False
-
+            self.person_speaking = False
         # 2. Lógica de grabación
         if self.is_listening:
             self.audio_buffer.extend(audio_data.tolist())
+
+    def autocut_waiting(self,duration):
+        # Timeout if the person talking is not recognized or it takes too long
+        max_timeout = duration
+        t1 = time.time()
+        while not self.person_speaking and time.time()-t1<5:
+            time.sleep(0.1)
+        self.get_logger().info("Person is speaking")
+        while (self.person_speaking or self.last_speaking_instance < 30) and time.time()-t1<max_timeout:
+            time.sleep(0.1)
+            t1 = time.time()
+        if time.time()-t1>=max_timeout:
+            self.get_logger().warn("Timeout reached.")
+        else:
+            self.get_logger().info("Person finished talking")
+
 
     def record_audio_callback(self, request: RecordAudio.Request, response: RecordAudio.Response):
         """
@@ -130,12 +149,11 @@ class MicrophoneNode(Node):
             self.audio_buffer = []
             self.is_listening = True
 
-            # TODO: Implementar lógica de grabación basada en VAD si request.duration es 0.
-            # Por ahora, simulamos una grabación de duración fija.
-            record_duration = float(request.duration if request.duration > 0 else 5.0)
-            self.get_logger().info(f"Grabando por {record_duration} segundos...")
-            time.sleep(record_duration)
-            self.get_logger().info("Grabación finalizada.")
+            if request.duration == 0:
+                self.autocut_waiting(duration=20)
+            else:
+                record_duration = float(request.duration)
+                time.sleep(record_duration)
 
             self.is_listening = False
             file_path = "/tmp/"
@@ -168,22 +186,36 @@ class MicrophoneNode(Node):
             self.audio_buffer = []
             self.is_listening = True
 
-            # TODO: Lógica de grabación (esperar a que el usuario hable y termine)
-            # Por ahora, simulamos una grabación de 3 segundos.
-            self.get_logger().info("Grabando...")
-            rclpy.spin_once(self, timeout_sec=3.0) 
-            self.get_logger().info("Grabación finalizada.")
+            self.toggle_blinking_client.call(SetBool.Request(data=False))
+            current_volume = int(self.get_volume_client.call(GetVolume.Request()).volume)
+            self.set_volume_client.call(SetVolume.Request(volume=0))
+
+
+            self.set_leds_color(0,255,255)
+            time.sleep(1)
+
+            if request.autocut:
+                self.autocut_waiting(duration=request.timeout)
+            else:
+                record_duration = float(request.timeout)
+                time.sleep(record_duration)
+
 
             self.is_listening = False
-            
-            # TODO: 1. Guardar el audio grabado usando una función de audio_processing.py
-            # file_path = audio_processing.save_recording(self.audio_buffer, "temp_record.wav", self.sample_rate)
-            file_path = "/tmp/temp_record.wav" # Platzhalter
-            self.get_logger().info(f"Audio guardado en: {file_path}")
+            file_path = "/tmp/"
+            save_recording(self.audio_buffer,saving_path=file_path,file_name="speech2text.wav",sample_rate=self.sample_rate)
+            self.get_logger().info(f"Audio guardado en: {file_path}speech_recordings/speech2text.wav")
+                
 
-            # TODO: 2. Transcribir el audio usando una función de transcription_clients.py
-            # transcription = transcription_clients.transcribe(file_path, self.transcription_model, lang=request.lang)
-            transcription = "Esta es una transcripción de prueba." # Platzhalter
+            self.is_listening = False
+            self.set_leds_color(255,255,255)
+
+
+            self.set_volume_client.call(SetVolume.Request(volume=current_volume))
+            self.toggle_blinking_client.call(SetBool.Request(data=True))
+
+            transcription = transcribe(f"{file_path}speech_recordings/speech2text.wav")
+            self.audio_buffer = []
             self.get_logger().info(f"Transcripción: '{transcription}'")
 
             response.transcription = transcription
@@ -197,6 +229,25 @@ class MicrophoneNode(Node):
             self.service_lock.release()
 
         return response
+    
+
+    def set_leds_color(self,r,g,b):
+        """
+        Function for setting the colors of the eyes of the robot.
+        Args:
+        r,g,b numbers
+            r for red
+            g for green
+            b for blue
+        """
+        ledsMessage = LedParameters()
+        ledsMessage.name = "FaceLeds"
+        ledsMessage.red = int(r)
+        ledsMessage.green = int(g)
+        ledsMessage.blue = int(b)
+        ledsMessage.duration = float(0)
+        self.leds_publisher.publish(ledsMessage)
+        time.sleep(0.2)
 
 
 def main(args=None):
