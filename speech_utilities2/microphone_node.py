@@ -3,6 +3,7 @@ from rclpy.node import Node
 import numpy as np
 import threading
 import time
+import os
 
 # Import the executor and callback group classes
 from rclpy.executors import MultiThreadedExecutor
@@ -399,7 +400,9 @@ def main(args=None):
         # Make sure to shutdown the executor and clean up resources.
         executor.shutdown()
         microphone_node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():  # Only call shutdown if rclpy is still "ok"
+            rclpy.shutdown()
+        os._exit(0)
 
 
 if __name__ == "__main__":
