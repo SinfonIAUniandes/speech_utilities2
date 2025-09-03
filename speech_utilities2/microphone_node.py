@@ -11,6 +11,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 # Importar los tipos de mensajes y servicios necesarios
 from naoqi_bridge_msgs.msg import AudioBuffer
 from speech_msgs2.srv import SpeechToText, RecordAudio, SetTranscriptionMode
+from speech_msgs2.msg import Transcription
 from naoqi_utilities_msgs.msg import LedParameters
 from naoqi_utilities_msgs.srv import SetVolume, GetVolume
 
@@ -85,6 +86,7 @@ class MicrophoneNode(Node):
         )  # Para evitar llamadas concurrentes al servicio
 
         # Realtime STT
+        self.is_transcribing = False
         self.recorder = AudioToTextRecorder(
             use_microphone=False,
             spinner=False,
@@ -95,7 +97,6 @@ class MicrophoneNode(Node):
         )
         self.process_text_thread = threading.Thread(target=self.recorder_to_text)
         self.process_text_thread.start()
-        self.is_transcribing = False
 
         # --- Callback Groups ---
         # Create a reentrant callback group for the services. This allows service
@@ -143,6 +144,12 @@ class MicrophoneNode(Node):
         )
         self.get_logger().info("Servicio '~/set_transcription_mode' listo.")
 
+        # --- Publicadores ---
+        self.transcription_publisher = self.create_publisher(
+            Transcription, '~/transcription', 10
+        )
+        self.get_logger().info("Topico de transcripciones creado: ~/transcription")
+
     def audio_callback(self, msg: AudioBuffer):
         """
         Callback que se ejecuta cada vez que llega un mensaje de audio.
@@ -179,10 +186,14 @@ class MicrophoneNode(Node):
 
     def process_text(self, text):
         print(text + " ")
+        msg = Transcription()
+        msg.text = text
+        self.transcription_publisher.publish(msg)
 
     def recorder_to_text(self):
         while True:
-            self.recorder.text(self.process_text)
+            if self.is_transcribing:
+                self.recorder.text(self.process_text)
 
     def switch_model_blocking(self,current_recorder, new_model, new_language):
         # stop & free current recorder (important to release GPU mem)
