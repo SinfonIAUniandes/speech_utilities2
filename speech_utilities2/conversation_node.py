@@ -51,7 +51,7 @@ class ConversationNode(Node):
         self.model_name = self.get_parameter("model_name").get_parameter_value().string_value
         self.temperature = self.get_parameter("temperature").get_parameter_value().double_value
         self.max_tokens = self.get_parameter("max_tokens").get_parameter_value().integer_value
-        self.context = "" # Contexto o mensaje de sistema para el LLM
+        #self.context = "" # Contexto o mensaje de sistema para el LLM
         self.conversation_history = []
 
         self.get_logger().info(f"Proveedor LLM inicial: {self.model_provider}")

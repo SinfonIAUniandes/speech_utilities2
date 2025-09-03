@@ -18,9 +18,9 @@ from naoqi_utilities_msgs.srv import SetVolume, GetVolume
 
 from std_srvs.srv import SetBool
 
-from .logic.audio_processing import save_recording
-from .logic.voice_activity_detection import detect_speech
-from .logic.speech_2_text import transcribe
+from .logic.audio.audio_processing import save_recording
+from .logic.audio.voice_activity_detection import detect_speech
+from .logic.audio.speech_2_text import transcribe
 
 # Realtime STT imports
 import struct
@@ -270,7 +270,8 @@ class MicrophoneNode(Node):
                 self.autocut_waiting(duration=20)
             else:
                 record_duration = float(request.duration)
-                time.sleep(record_duration)
+                # 2 seconds to account for delay
+                time.sleep(record_duration+2)
 
             self.is_listening = False
             file_path = "/tmp/"
@@ -327,7 +328,7 @@ class MicrophoneNode(Node):
                 self.autocut_waiting(duration=request.timeout)
             else:
                 record_duration = float(request.timeout)
-                time.sleep(record_duration)
+                time.sleep(record_duration + 2)
 
             self.is_listening = False
             file_path = "/tmp/"

@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'microphone_node = speech_utilities2.microphone_node:main'
+            'microphone_node = speech_utilities2.microphone_node:main',
+            'conversation_node = speech_utilities2.conversation_node:main'
         ],
     },
 )

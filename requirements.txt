@@ -2,3 +2,9 @@ numpy
 soundfile
 openai-whisper
 torch
+RealtimeSTT
+python-dotenv
+langchain
+langchain-openai
+langchain-community
+langchain-ollama

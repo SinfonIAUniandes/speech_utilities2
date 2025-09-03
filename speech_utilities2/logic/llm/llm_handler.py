@@ -2,12 +2,17 @@ from typing import Optional, Dict, Any
 import os
 
 # Importar clases de lógica interna
-from .llm_settings import LLMSettings
-from .llm_memory import LLMMemory
+from llm_settings import LLMSettings
+from llm_memory import LLMMemory
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv()
 
 # Importar adaptadores de LangChain (o el framework que prefieras)
 try:
-    from langchain.chat_models import AzureChatOpenAI, ChatOpenAI
+    from langchain_community.chat_models import AzureChatOpenAI
+    from langchain_community.chat_models import ChatOpenAI
     from langchain_ollama import ChatOllama
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 except ImportError:
@@ -18,23 +23,13 @@ except ImportError:
 
 # Este registro se puede mover a un archivo de configuración YAML/JSON si se vuelve complejo
 MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
-    "gpt-4o-azure": {
+    "gpt-4-azure": {
         "provider": "azure",
         "api_key": os.getenv("AZURE_OPENAI_API_KEY"),
         "endpoint": os.getenv("AZURE_OPENAI_ENDPOINT"),
-        "api_version": "2024-02-01",
-        "deployment_name": "gpt-4o",
-    },
-    "llama3.1-local": {
-        "provider": "ollama",
-        "model": "llama3.1",
-        "base_url": "http://localhost:11434",
-    },
-    "gpt-4o-mini": {
-        "provider": "openai",
-        "api_key": os.getenv("OPENAI_API_KEY"),
-        "model": "gpt-4o-mini",
-    },
+        "api_version": os.getenv("AZURE_OPENAI_API_VERSION"),
+        "deployment_name": os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+    }
 }
 
 class LLMHandler:
