@@ -5,13 +5,10 @@ from typing import Dict, Any
 # Importar los tipos de servicios necesarios
 from speech_msgs2.srv import SetLLMSettings, LLMResponse
 from std_srvs.srv import Trigger
+from dotenv import load_dotenv
 
-# Importar el manejador de LLM desde la capa de lógica
-try:
-    from .logic.llm.llm_handler import LLMHandler
-except ImportError:
-    # Este fallback permite que el linter/intellisense funcione si la estructura de paquetes no está resuelta
-    from logic.llm.llm_handler import LLMHandler
+from .logic.llm.llm_handler import LLMHandler
+load_dotenv()
 
 
 class ConversationNode(Node):
@@ -50,14 +47,14 @@ class ConversationNode(Node):
             )
 
         # --- Declarar parámetros configurables del LLM ---
-        self.declare_parameter("model_name", "gpt-4-azure")
+        self.declare_parameter("model_name", "gpt-4o-azure")
         self.declare_parameter("temperature", 0.7)
         self.declare_parameter("max_tokens", 256)
         self.declare_parameter("context", "")
 
         # --- Configuración inicial por defecto ---
         initial_settings = {
-            "model_name": self.get_parameter("model_name").get_parameter_value().string_value or "gpt-4-azure",
+            "model_name": self.get_parameter("model_name").get_parameter_value().string_value or "gpt-4o-azure",
             "temperature": self.get_parameter("temperature").get_parameter_value().double_value if self.get_parameter("temperature").get_parameter_value().double_value != 0.0 else 0.7,
             "max_tokens": self.get_parameter("max_tokens").get_parameter_value().integer_value or 256,
             "context": self.get_parameter("context").get_parameter_value().string_value or ""
@@ -106,7 +103,7 @@ class ConversationNode(Node):
         self.get_logger().info(f"Solicitud para actualizar la configuración del LLM recibida: {request}")
         try:
             new_settings: Dict[str, Any] = {
-                "model_name": request.model_name,
+                "model_name": request.model_name+request.model_provider,
                 "temperature": float(request.temperature),
                 "max_tokens": int(request.max_tokens),
                 "context": request.context

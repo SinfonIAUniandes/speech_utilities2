@@ -2,8 +2,8 @@ from typing import Optional, Dict, Any, List
 import os
 
 # Importar clases de lógica interna
-from llm_settings import LLMSettings
-from llm_memory import LLMMemory
+from .llm_settings import LLMSettings
+from .llm_memory import LLMMemory
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde un archivo .env si existe
@@ -22,9 +22,16 @@ except ImportError:
 
 # Registro de modelos que busca la configuración en variables de entorno.
 MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
-    "gpt-4-azure": {
+    "gpt-4o-azure": {
         "provider": "azure",
-        "deployment_name": os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        "deployment_name": "GPT-4o",
+        "AZURE_OPENAI_API_KEY": os.getenv("AZURE_OPENAI_API_KEY"),
+        "AZURE_OPENAI_ENDPOINT": os.getenv("AZURE_OPENAI_ENDPOINT"),
+        "api_version": os.getenv("AZURE_OPENAI_API_VERSION"),
+    },
+    "gpt-4.1-azure": {
+        "provider": "azure",
+        "deployment_name": "gpt-4.1",
         "AZURE_OPENAI_API_KEY": os.getenv("AZURE_OPENAI_API_KEY"),
         "AZURE_OPENAI_ENDPOINT": os.getenv("AZURE_OPENAI_ENDPOINT"),
         "api_version": os.getenv("AZURE_OPENAI_API_VERSION"),
@@ -85,7 +92,7 @@ class LLMHandler:
         try:
             if provider == "azure":
                 self.llm_client = AzureChatOpenAI(
-                    azure_deployment=config["deployment_name"], openai_api_version=config["api_version"], api_key=config["AZURE_OPENAI_API_KEY"], azure_endpoint=config["AZURE_OPENAI_ENDPOINT"], **llm_kwargs
+                    azure_deployment=config["deployment_name"], openai_api_version=config["api_version"], api_key=config["AZURE_OPENAI_API_KEY"], azure_endpoint=config["AZURE_OPENAI_ENDPOINT"]
                 )
             elif provider == "ollama":
                 # Ollama usa 'num_predict' en lugar de 'max_tokens'
@@ -93,10 +100,10 @@ class LLMHandler:
                 if "max_tokens" in ollama_kwargs:
                     ollama_kwargs["num_predict"] = ollama_kwargs.pop("max_tokens")
                 self.llm_client = ChatOllama(
-                    model=config["model"], base_url=config["base_url"], **ollama_kwargs
+                    model=config["model"], base_url=config["base_url"]
                 )
             elif provider == "openai":
-                self.llm_client = ChatOpenAI(model=config["model"], **llm_kwargs)
+                self.llm_client = ChatOpenAI(model=config["model"])
             else:
                 raise ValueError(f"Proveedor '{provider}' no soportado.")
             print("Cliente LLM creado exitosamente.")

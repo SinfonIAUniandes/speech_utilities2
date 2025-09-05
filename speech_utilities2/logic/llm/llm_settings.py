@@ -6,7 +6,6 @@ class LLMSettings:
     """
     Almacena la configuración para un cliente LLM.
     """
-    model_provider: str = "default_provider"
     model_name: str = "default_model"
     temperature: float = 0.7
     max_tokens: int = 500
