@@ -1,9 +1,18 @@
 import rclpy
 from rclpy.node import Node
+from typing import Dict, Any
 
 # Importar los tipos de servicios necesarios
 from speech_msgs2.srv import SetLLMSettings, LLMResponse
 from std_srvs.srv import Trigger
+
+# Importar el manejador de LLM desde la capa de lógica
+try:
+    from .logic.llm.llm_handler import LLMHandler
+except ImportError:
+    # Este fallback permite que el linter/intellisense funcione si la estructura de paquetes no está resuelta
+    from logic.llm.llm_handler import LLMHandler
+
 
 class ConversationNode(Node):
     """
@@ -16,12 +25,6 @@ class ConversationNode(Node):
 
     def __init__(self, robot_name: str = None):
         super().__init__("conversation_node")
-
-        # --- Parámetros del LLM ---
-        self.declare_parameter("model_provider", "default_provider")
-        self.declare_parameter("model_name", "default_model")
-        self.declare_parameter("temperature", 0.7)
-        self.declare_parameter("max_tokens", 500)
 
         # El nombre del robot
         self.declare_parameter("robot_name", "robot")
@@ -46,16 +49,33 @@ class ConversationNode(Node):
                 self.get_parameter("robot_name").get_parameter_value().string_value
             )
 
-        # --- Variables de estado ---
-        self.model_provider = self.get_parameter("model_provider").get_parameter_value().string_value
-        self.model_name = self.get_parameter("model_name").get_parameter_value().string_value
-        self.temperature = self.get_parameter("temperature").get_parameter_value().double_value
-        self.max_tokens = self.get_parameter("max_tokens").get_parameter_value().integer_value
-        #self.context = "" # Contexto o mensaje de sistema para el LLM
-        self.conversation_history = []
+        # --- Declarar parámetros configurables del LLM ---
+        self.declare_parameter("model_name", "gpt-4-azure")
+        self.declare_parameter("temperature", 0.7)
+        self.declare_parameter("max_tokens", 256)
+        self.declare_parameter("context", "")
 
-        self.get_logger().info(f"Proveedor LLM inicial: {self.model_provider}")
-        self.get_logger().info(f"Modelo LLM inicial: {self.model_name}")
+        # --- Configuración inicial por defecto ---
+        initial_settings = {
+            "model_name": self.get_parameter("model_name").get_parameter_value().string_value or "gpt-4-azure",
+            "temperature": self.get_parameter("temperature").get_parameter_value().double_value if self.get_parameter("temperature").get_parameter_value().double_value != 0.0 else 0.7,
+            "max_tokens": self.get_parameter("max_tokens").get_parameter_value().integer_value or 256,
+            "context": self.get_parameter("context").get_parameter_value().string_value or ""
+        }
+
+        # --- Instanciar el manejador de LLM ---
+        try:
+            self.llm_handler = LLMHandler(initial_settings)
+        except ImportError as e:
+            self.get_logger().fatal(f"No se pudo inicializar LLMHandler. Asegúrate de que las dependencias de LangChain están instaladas: {e}")
+            # Apagar el nodo si el componente principal no puede cargarse.
+            # Esto evita que los servicios queden colgados sin funcionalidad.
+            self.destroy_node()
+            return
+        except Exception as e:
+            self.get_logger().fatal(f"Error inesperado al inicializar LLMHandler: {e}")
+            self.destroy_node()
+            return
 
         # --- Servicios ---
         self.set_settings_service = self.create_service(
@@ -81,22 +101,29 @@ class ConversationNode(Node):
 
     def set_llm_settings_callback(self, request: SetLLMSettings.Request, response: SetLLMSettings.Response):
         """
-        Callback para configurar los parámetros del LLM.
+        Callback para configurar los parámetros del LLM a través del LLMHandler.
         """
-        self.get_logger().info("Solicitud para actualizar la configuración del LLM recibida.")
-        # --- IMPLEMENTACIÓN AQUÍ ---
-        # Lógica para actualizar los parámetros y reiniciar el cliente del LLM si es necesario.
-        # Por ejemplo:
-        # self.model_provider = request.model_provider
-        # self.model_name = request.model_name
-        # self.temperature = float(request.temperature)
-        # self.max_tokens = int(request.max_tokens)
-        # self.context = request.context
-        # self.get_logger().info("Configuración del LLM actualizada.")
-        # self.clear_llm_history_callback(None, None) # Opcional: limpiar historial al cambiar contexto
-        # response.success = True
-        # response.message = "Configuración actualizada correctamente."
-        pass
+        self.get_logger().info(f"Solicitud para actualizar la configuración del LLM recibida: {request}")
+        try:
+            new_settings: Dict[str, Any] = {
+                "model_name": request.model_name,
+                "temperature": float(request.temperature),
+                "max_tokens": int(request.max_tokens),
+                "context": request.context
+            }
+            self.llm_handler.update_settings(new_settings)
+            response.success = True
+            response.message = "Configuración del LLM actualizada correctamente."
+            self.get_logger().info(response.message)
+        except (ValueError, TypeError) as e:
+            response.success = False
+            response.message = f"Error en los tipos de datos de la configuración: {e}"
+            self.get_logger().error(response.message)
+        except Exception as e:
+            response.success = False
+            response.message = f"Error al actualizar la configuración del LLM: {e}"
+            self.get_logger().error(response.message)
+        
         return response
 
     def llm_response_callback(self, request: LLMResponse.Request, response: LLMResponse.Response):
@@ -104,14 +131,15 @@ class ConversationNode(Node):
         Callback para enviar un prompt al LLM y obtener una respuesta.
         """
         self.get_logger().info(f"Prompt recibido: '{request.prompt}'")
-        # --- IMPLEMENTACIÓN AQUÍ ---
-        # Lógica para enviar el prompt al LLM, gestionar el historial y obtener la respuesta.
-        # Por ejemplo:
-        # self.conversation_history.append({"role": "user", "content": request.prompt})
-        # llm_answer = self.llm_client.get_response(self.conversation_history)
-        # self.conversation_history.append({"role": "assistant", "content": llm_answer})
-        # response.answer = llm_answer
-        pass
+        try:
+            answer = self.llm_handler.get_response(request.prompt)
+            response.answer = answer
+            self.get_logger().info(f"Respuesta generada: '{answer}'")
+        except Exception as e:
+            error_message = f"Error al obtener respuesta del LLM: {e}"
+            self.get_logger().error(error_message)
+            response.answer = error_message
+
         return response
 
     def clear_llm_history_callback(self, request: Trigger.Request, response: Trigger.Response):
@@ -119,15 +147,16 @@ class ConversationNode(Node):
         Callback para limpiar el historial de la conversación del LLM.
         """
         self.get_logger().info("Solicitud para limpiar el historial de la conversación recibida.")
-        # --- IMPLEMENTACIÓN AQUÍ ---
-        # Lógica para borrar el historial de mensajes.
-        # Por ejemplo:
-        # self.conversation_history = []
-        # if self.context:
-        #     self.conversation_history.append({"role": "system", "content": self.context})
-        # response.success = True
-        # response.message = "Historial de la conversación limpiado."
-        pass
+        try:
+            self.llm_handler.clear_history()
+            response.success = True
+            response.message = "Historial de la conversación limpiado."
+            self.get_logger().info(response.message)
+        except Exception as e:
+            response.success = False
+            response.message = f"Error al limpiar el historial: {e}"
+            self.get_logger().error(response.message)
+
         return response
 
 
