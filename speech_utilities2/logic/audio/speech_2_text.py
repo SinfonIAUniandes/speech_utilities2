@@ -1,9 +1,11 @@
+from functools import lru_cache
 import time
 import torch
 import whisper
 import os
 from ament_index_python.packages import get_package_share_directory
 
+@lru_cache
 def load_model(model_size = "small"):
     package_name = 'speech_utilities2'
     package_path = get_package_share_directory(package_name)
@@ -17,9 +19,9 @@ def load_model(model_size = "small"):
     model_whisp = whisper.load_model(model_size, in_memory= in_memory, download_root = PATH_DATA)
     return model_whisp, device
 
-speech_2_text_model,device = load_model("small.en")
+speech_2_text_model,device = load_model("base.en")
 
-def transcribe(file_path):
+def transcribe(file_path,language="en"):
     """
     Input:
     file_path: path of the .wav file to transcribe
@@ -31,8 +33,12 @@ def transcribe(file_path):
     Use the local version of whisper for transcribing short audios
     """
     t1 = float(time.perf_counter() * 1000)
+    if language=="en":
+        speech_2_text_model,device = load_model("base.en")
+    else:
+        speech_2_text_model,device = load_model("base")
     torch.cuda.empty_cache()
-    result = speech_2_text_model.transcribe(file_path)
+    result = speech_2_text_model.transcribe(file_path,language=language)
     torch.cuda.empty_cache()
     t2 = float(time.perf_counter() * 1000)
     print("Local [ms]: ", float(t2-t1))
