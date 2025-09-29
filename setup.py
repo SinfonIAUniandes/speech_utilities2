@@ -17,7 +17,6 @@ setup(
     maintainer_email='d.cuevas@uniandes.edu.co',
     description='TODO: Package description',
     license='TODO: License declaration',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'microphone_node = speech_utilities2.microphone_node:main',
