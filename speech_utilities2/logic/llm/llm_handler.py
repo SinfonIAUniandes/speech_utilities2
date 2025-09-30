@@ -163,32 +163,3 @@ class LLMHandler:
         """
         print("Limpiando historial de conversación.")
         self.memory.clear()
-        
-# Ejemplo de cómo se podría usar
-if __name__ == '__main__':
-    # Asegúrate de tener un archivo .env con las credenciales o tenerlas
-    # exportadas en tu terminal. Por ejemplo, para Azure:
-    # AZURE_OPENAI_CHAT_DEPLOYMENT="gpt-4"
-    # AZURE_OPENAI_ENDPOINT="https://tu-endpoint.openai.azure.com/"
-    # AZURE_OPENAI_API_KEY="tu-api-key"
-    # AZURE_OPENAI_API_VERSION="2024-02-01"
-
-    print("--- Probando LLMHandler con Azure ---")
-    try:
-        handler = LLMHandler({"model_name": "gpt-4-azure"})
-        
-        respuesta1 = handler.get_response("Hola, ¿cómo estás?")
-        print(f"Respuesta del LLM: {respuesta1}\n")
-
-        respuesta2 = handler.get_response("¿Cuál fue mi primera pregunta?")
-        print(f"Respuesta del LLM: {respuesta2}\n")
-
-        handler.update_settings({
-            "temperature": 0.9,
-            "context": "Eres un pirata malhumorado que solo habla con jerga pirata."
-        })
-
-        respuesta3 = handler.get_response("Y ahora, ¿quién eres?")
-        print(f"Respuesta del LLM: {respuesta3}\n")
-    except Exception as e:
-        print(f"No se pudo ejecutar el ejemplo de Azure: {e}")
