@@ -93,8 +93,9 @@ class MicrophoneNode(Node):
             spinner=False,
             language="en",
             model="base.en",
-            silero_sensitivity=0.2,
+            silero_sensitivity=0.17,
             silero_deactivity_detection=True,
+            post_speech_silence_duration=1,
         )
         self.process_text_thread = threading.Thread(target=self.recorder_to_text)
         self.process_text_thread.start()
@@ -212,8 +213,9 @@ class MicrophoneNode(Node):
             spinner=False,
             language=new_language,
             model=new_model,
-            silero_sensitivity=0.2,
-            silero_deactivity_detection=True
+            silero_sensitivity=0.17,
+            silero_deactivity_detection=True,
+            post_speech_silence_duration=1,
         )
         return new_rec
 
