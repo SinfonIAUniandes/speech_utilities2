@@ -237,8 +237,7 @@ You can run both in separate terminals.
 
 ## Test LLM Service (Example)
 
-Bash
-
-ros2 service call /conversation_node/llm_response speech_msgs2/srv/LLMResponse "{prompt: 'Hello, answer in one word who are you}"
-
+```bash
+ros2 service call /conversation_node/llm_response speech_msgs2/srv/LLMResponse "{prompt: 'Hola, responde en una frase quién eres'}"
+```
 
