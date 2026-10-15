@@ -11,7 +11,7 @@ load_dotenv()
 
 # Importar adaptadores de LangChain
 try:
-    from langchain_community.chat_models import AzureChatOpenAI, ChatOpenAI
+    from langchain_openai import AzureChatOpenAI, ChatOpenAI
     from langchain_ollama import ChatOllama
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
 except ImportError:
@@ -46,6 +46,12 @@ MODEL_REGISTRY: Dict[str, Dict[str, Any]] = {
         "model": "gpt-4o-mini",
         # La API key es leída automáticamente por ChatOpenAI desde la variable
         # de entorno OPENAI_API_KEY.
+    },
+    "gemma3:270m": {
+        "provider": "ollama",
+        "model": "gemma3:270m",
+        # Lee la variable de entorno. Si no existe, asume que Ollama está en la misma red (localhost)
+        "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"), 
     }
 }
 

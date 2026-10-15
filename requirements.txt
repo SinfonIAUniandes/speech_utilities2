@@ -8,3 +8,4 @@ langchain
 langchain-openai
 langchain-community
 langchain-ollama
+faster-whisper

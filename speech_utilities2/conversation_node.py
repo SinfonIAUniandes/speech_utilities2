@@ -47,14 +47,15 @@ class ConversationNode(Node):
             )
 
         # --- Declarar parámetros configurables del LLM ---
-        self.declare_parameter("model_name", "gpt-4o-azure")
+        self.declare_parameter("model_name", "gemma3:270m")
         self.declare_parameter("temperature", 0.7)
         self.declare_parameter("max_tokens", 256)
         self.declare_parameter("context", "")
 
         # --- Configuración inicial por defecto ---
         initial_settings = {
-            "model_name": self.get_parameter("model_name").get_parameter_value().string_value or "gpt-4o-azure",
+            "llm_mode": "ollama", 
+            "model_name": self.get_parameter("model_name").get_parameter_value().string_value or "gemma3:270m",
             "temperature": self.get_parameter("temperature").get_parameter_value().double_value if self.get_parameter("temperature").get_parameter_value().double_value != 0.0 else 0.7,
             "max_tokens": self.get_parameter("max_tokens").get_parameter_value().integer_value or 256,
             "context": self.get_parameter("context").get_parameter_value().string_value or ""

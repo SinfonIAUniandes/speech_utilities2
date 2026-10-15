@@ -18,6 +18,9 @@ Clone into the `src` folder of your ROS 2 workspace:
 ```bash
 cd ~/ros2_ws/src
 git clone https://github.com/SinfonIAUniandes/speech_utilities2
+git clone https://github.com/ros-naoqi/naoqi_bridge_msgs2.git
+git clone https://github.com/SinfonIAUniandes/speech_msgs2.git
+git clone https://github.com/SinfonIAUniandes/naoqi_utilities_msgs.git
 ```
 
 ### 2. Install Python Dependencies
@@ -42,7 +45,7 @@ rosdep install --from-paths src --ignore-src -r -y
 
 ```bash
 cd ~/ros2_ws
-colcon build --packages-select speech_utilities2
+colcon build
 source install/setup.bash
 ```
 
@@ -115,7 +118,7 @@ Key ROS interfaces:
 
 Default parameters:
 
-- `model_name`: `gpt-4o-azure`
+- `model_name`: `gpt-4o-azure` (or gemma3:270m for local usage)
 - `temperature`: `0.7`
 - `max_tokens`: `256`
 - `context`: `""`
@@ -131,6 +134,7 @@ Default parameters:
 - `gpt-4.1-azure`
 - `gpt-4o-mini`
 - `llama3.1-local`
+- `gemma3:270m`
 
 Set environment variables (for example in `.env`):
 
@@ -143,11 +147,56 @@ AZURE_OPENAI_API_VERSION=2024-02-01
 # OpenAI (for non-Azure models)
 OPENAI_API_KEY=your_key
 
-# Ollama (optional, default shown)
-OLLAMA_BASE_URL=http://localhost:11434
+# Ollama (Local LLM)
+# If ROS 2 runs in Docker and Ollama on the Host, DO NOT use localhost. 
+# See the Local LLM Integration section below for how to get the actual URL.
+OLLAMA_BASE_URL=http://<HOST_IP>:11434
 ```
 
 The package loads `.env` automatically via `python-dotenv`.
+
+---
+
+## Local LLM Integration (Ollama + Docker)
+
+When running the ROS 2 workspace inside a Docker container and the Ollama engine on the Ubuntu Host (to optimize hardware resources), network adjustments are required.
+
+1. Host Setup (Ubuntu)
+
+Install Ollama and the model on your host machine:
+
+Bash
+
+curl -fsSL [https://ollama.com/install.sh](https://ollama.com/install.sh) | sh
+ollama run gemma3:270m
+
+By default, Ollama blocks external network requests. To allow Docker to reach it, edit the service:
+
+Bash
+sudo systemctl edit ollama.service
+
+Add the following at the top of the file:
+Ini, TOML
+
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0"
+
+Restart the service on the host:
+
+Bash
+
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+
+2. Container Setup (Docker)
+
+Inside the container, localhost points to the container itself, not the host. To find the correct Host IP to set in your OLLAMA_BASE_URL, check the default nameserver:
+
+Bash
+
+cat /etc/resolv.conf
+
+Copy the IP next to nameserver (usually 172.17.0.1 or 172.18.0.1) and use it in your .env file or export it in your ~/.bashrc.
 
 ---
 
@@ -182,5 +231,12 @@ ros2 run speech_utilities2 microphone_node
 ```bash
 ros2 run speech_utilities2 conversation_node
 ```
-
 You can run both in separate terminals.
+
+## Test LLM Service (Example)
+
+Bash
+
+ros2 service call /conversation_node/llm_response speech_msgs2/srv/LLMResponse "{prompt: 'Hello, answer in one word who are you}"
+
+
