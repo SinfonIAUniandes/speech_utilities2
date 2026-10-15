@@ -161,42 +161,44 @@ The package loads `.env` automatically via `python-dotenv`.
 
 When running the ROS 2 workspace inside a Docker container and the Ollama engine on the Ubuntu Host (to optimize hardware resources), network adjustments are required.
 
-1. Host Setup (Ubuntu)
+### 1. Host Setup (Ubuntu)
 
 Install Ollama and the model on your host machine:
 
-Bash
-
-curl -fsSL [https://ollama.com/install.sh](https://ollama.com/install.sh) | sh
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
 ollama run gemma3:270m
+```
 
 By default, Ollama blocks external network requests. To allow Docker to reach it, edit the service:
 
-Bash
+```bash
 sudo systemctl edit ollama.service
+```
 
 Add the following at the top of the file:
-Ini, TOML
 
+```ini
 [Service]
 Environment="OLLAMA_HOST=0.0.0.0"
+```
 
 Restart the service on the host:
 
-Bash
-
+```bash
 sudo systemctl daemon-reload
 sudo systemctl restart ollama
+```
 
-2. Container Setup (Docker)
+### 2. Container Setup (Docker)
 
-Inside the container, localhost points to the container itself, not the host. To find the correct Host IP to set in your OLLAMA_BASE_URL, check the default nameserver:
+Inside the container, `localhost` points to the container itself, not the host. To find the correct Host IP to set in your `OLLAMA_BASE_URL`, check the default nameserver:
 
-Bash
-
+```bash
 cat /etc/resolv.conf
+```
 
-Copy the IP next to nameserver (usually 172.17.0.1 or 172.18.0.1) and use it in your .env file or export it in your ~/.bashrc.
+Copy the IP next to `nameserver` (usually `172.17.0.1` or `172.18.0.1`) and use it in your `.env` file or export it in your `~/.bashrc`.
 
 ---
 
