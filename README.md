@@ -105,6 +105,7 @@ Default parameters:
 
 Main responsibilities:
 
+- Loads the robot's persona from `data/` and uses it as the system prompt
 - Creates and manages an LLM client
 - Handles chat prompts with conversation memory
 - Supports runtime LLM reconfiguration
@@ -118,11 +119,18 @@ Key ROS interfaces:
 
 Default parameters:
 
-- `model_name`: `gpt-4o-azure` (or gemma3:270m for local usage)
+- `model_name`: `gemma3:1b` (or `gpt-4o-azure` for the cloud provider)
 - `temperature`: `0.7`
 - `max_tokens`: `256`
-- `context`: `""`
-- `robot_name`: `robot`
+- `context`: `""` (situational text appended to the persona)
+- `robot_name`: `nova` (selects the persona file in `data/`)
+- `language`: `es` (persona language, and the language the robot replies in)
+- `data_dir`: `""` (empty means the installed `data` directory)
+
+`robot_name`, `language` and `context` can be changed while the node is
+running with `ros2 param set`; the prompt is re-rendered and the conversation
+is cleared.
+
 
 ---
 

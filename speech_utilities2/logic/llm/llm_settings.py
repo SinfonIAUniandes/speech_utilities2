@@ -1,42 +1,40 @@
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+"""Settings for one language-model client."""
+
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+#: Fields converted to a specific type when they arrive as strings.
+_COERCIONS = {'temperature': float, 'max_tokens': int}
+
 
 @dataclass
 class LLMSettings:
     """
-    Almacena la configuración para un cliente LLM.
+    Everything needed to build and drive a language-model client.
+
+    'model_name' is a key into the model registry, not a provider's own model
+    id. 'fallback_answer' is spoken when the model returns nothing.
     """
-    model_name: str = "default_model"
+
+    model_name: str = 'default_model'
     temperature: float = 0.7
     max_tokens: int = 500
     context: Optional[str] = None
+    fallback_answer: str = 'Sorry, I could not produce an answer right now.'
 
-    def update_from_dict(self, settings_dict: Dict[str, Any]):
+    def update_from_dict(self, settings_dict: Dict[str, Any]) -> None:
         """
-        Actualiza los atributos de la clase desde un diccionario.
+        Apply the recognised keys of 'settings_dict', ignoring the rest.
+
+        Numeric fields are coerced; a bad value raises 'ValueError' naming it.
         """
         for key, value in settings_dict.items():
-            if hasattr(self, key):
-                # Realiza conversiones de tipo si es necesario
+            if not hasattr(self, key):
+                continue
+            coerce = _COERCIONS.get(key)
+            if coerce is not None:
                 try:
-                    if key == "temperature":
-                        value = float(value)
-                    elif key == "max_tokens":
-                        value = int(value)
-                    setattr(self, key, value)
-                except (ValueError, TypeError) as e:
-                    print(f"Error al convertir el ajuste '{key}' con valor '{value}': {e}")
-
-# Ejemplo de cómo se podría usar
-if __name__ == '__main__':
-    settings = LLMSettings()
-    print(f"Ajustes iniciales: {settings}")
-
-    new_settings = {
-        "model_name": "gpt-4o-azure",
-        "temperature": "0.1",
-        "max_tokens": "1024",
-        "context": "Eres un asistente robótico servicial."
-    }
-    settings.update_from_dict(new_settings)
-    print(f"Ajustes actualizados: {settings}")
+                    value = coerce(value)
+                except (TypeError, ValueError) as error:
+                    raise ValueError(f"Invalid value for '{key}': {value!r} ({error})") from error
+            setattr(self, key, value)

@@ -9,7 +9,7 @@ import os
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 
-# Importar los tipos de mensajes y servicios necesarios
+# Message and service types
 from naoqi_bridge_msgs.msg import AudioBuffer
 from speech_msgs2.srv import SpeechToText, RecordAudio, SetTranscriptionMode
 from speech_msgs2.msg import Transcription
@@ -29,43 +29,25 @@ from RealtimeSTT import AudioToTextRecorder
 
 class MicrophoneNode(Node):
     """
-    Nodo encargado de procesar el audio del micrófono.
+    Capture robot audio, detect speech, and transcribe on request.
 
-    - Se suscribe a un tópico de audio (/audio/raw).
-    - Realiza Detección de Actividad de Voz (VAD) continuamente.
-    - Ofrece un servicio (~/speech_to_text) para grabar y transcribir audio.
+    Subscribes to an audio topic, runs voice activity detection continuously,
+    and offers services to transcribe, record to a file, and stream
+    continuous transcriptions.
     """
 
-    def __init__(self, robot_name: str = None):
+    def __init__(self):
         super().__init__("microphone_node")
 
-        # --- Parámetros ---
+        # --- Parameters ---
         self.declare_parameter("audio_topic", "/mic")
         self.declare_parameter("sample_rate", 16000)
         self.declare_parameter("vad_threshold", 0.5)
 
-        # El nombre del robot
+        # Declared so existing launch files may still pass it. Nothing in
+        # this node reads it; the persona it used to select is handled by
+        # conversation_node.
         self.declare_parameter("robot_name", "robot")
-
-        if robot_name is not None:
-            # si se pasa por constructor, también actualizamos el parámetro local
-            self.robot_name = str(robot_name)
-            # opcional: establecer el parámetro en el servidor de parámetros
-            try:
-                self.set_parameters(
-                    [
-                        rclpy.parameter.Parameter(
-                            "robot_name", rclpy.Parameter.Type.STRING, self.robot_name
-                        )
-                    ]
-                )
-            except Exception:
-                # no crítico si falla (dependiendo de la versión de rclpy)
-                pass
-        else:
-            self.robot_name = (
-                self.get_parameter("robot_name").get_parameter_value().string_value
-            )
 
         audio_topic = (
             self.get_parameter("audio_topic").get_parameter_value().string_value
@@ -77,14 +59,14 @@ class MicrophoneNode(Node):
             self.get_parameter("vad_threshold").get_parameter_value().double_value
         )
 
-        # --- Variables de estado ---
-        self.is_listening = False  # Controla si se debe guardar el audio en el buffer
-        self.person_speaking = False  # Estado actual del VAD
-        self.last_speaking_instance = 0  # Para detectar fin de locución
-        self.audio_buffer = []  # Buffer para almacenar el audio durante la grabación
+        # --- State ---
+        self.is_listening = False  # Whether incoming audio is buffered
+        self.person_speaking = False  # Current voice detection state
+        self.last_speaking_instance = 0  # Consecutive silent chunks
+        self.audio_buffer = []  # Samples captured while recording
         self.service_lock = (
             threading.Lock()
-        )  # Para evitar llamadas concurrentes al servicio
+        )  # Serialises the recording services
 
         # Realtime STT
         self.is_transcribing = False
@@ -120,7 +102,7 @@ class MicrophoneNode(Node):
         self.audio_subscription = self.create_subscription(
             AudioBuffer, audio_topic, self.audio_callback, 10
         )
-        self.get_logger().info(f"Suscrito al tópico de audio: '{audio_topic}'")
+        self.get_logger().info(f"Subscribed to audio topic: '{audio_topic}'")
 
         # --- Servicios ---
         self.speech_to_text_service = self.create_service(
@@ -129,7 +111,7 @@ class MicrophoneNode(Node):
             self.speech_to_text_callback,
             callback_group=self.service_callback_group,
         )
-        self.get_logger().info("Servicio '~/speech_to_text' listo.")
+        self.get_logger().info("Service '~/speech_to_text' ready.")
 
         self.record_audio_service = self.create_service(
             RecordAudio,
@@ -137,14 +119,14 @@ class MicrophoneNode(Node):
             self.record_audio_callback,
             callback_group=self.service_callback_group,
         )
-        self.get_logger().info("Servicio '~/record_audio' listo.")
+        self.get_logger().info("Service '~/record_audio' ready.")
 
         self.set_transcription_mode_service = self.create_service(
             SetTranscriptionMode,
             "~/set_transcription_mode",
             self.set_transcription_mode_callback
         )
-        self.get_logger().info("Servicio '~/set_transcription_mode' listo.")
+        self.get_logger().info("Service '~/set_transcription_mode' ready.")
 
         # --- Publicadores ---
         self.transcription_publisher = self.create_publisher(
@@ -154,13 +136,14 @@ class MicrophoneNode(Node):
 
     def audio_callback(self, msg: AudioBuffer):
         """
-        Callback que se ejecuta cada vez que llega un mensaje de audio.
-        Realiza VAD y, si está activo, guarda el audio en un buffer.
+        Handle one incoming audio message.
+
+        Runs voice detection, buffers the samples while recording, and feeds
+        the streaming recogniser when that mode is on.
         """
-        # Convertir el buffer de bytes a un array de numpy
-        # Asumimos formato int16, común en micrófonos
+        # Assumes signed 16-bit samples, the usual microphone format.
         audio_data = np.frombuffer(msg.data, dtype=np.int16)
-        # 1. Lógica de Detección de Actividad de Voz (VAD)
+        # 1. Voice activity detection
         self.last_speaking_instance = detect_speech(
             audio_buffer=msg.data,
             sample_rate=self.sample_rate,
@@ -171,7 +154,7 @@ class MicrophoneNode(Node):
         else:
             self.person_speaking = False
 
-        # 2. Lógica de grabación
+        # 2. Recording
         if self.is_listening:
             self.audio_buffer.extend(audio_data.tolist())
 
@@ -252,18 +235,18 @@ class MicrophoneNode(Node):
         self, request: RecordAudio.Request, response: RecordAudio.Response
     ):
         """
-        Maneja las solicitudes del servicio para grabar audio y guardarlo en un archivo.
+        Record audio and save it to a file on this machine.
         """
         if not self.service_lock.acquire(blocking=False):
             self.get_logger().warn(
-                "El servicio ya está en uso. Se ignora la nueva solicitud."
+                "Service already in use; ignoring this request."
             )
             response.success = False
             return response
 
         try:
             self.get_logger().info(
-                f"Solicitud de grabación recibida para '{request.file_name}.wav'."
+                f"Recording requested for '{request.file_name}.wav'."
             )
             self.audio_buffer = []
             self.is_listening = True
@@ -284,13 +267,13 @@ class MicrophoneNode(Node):
                 sample_rate=self.sample_rate,
             )
             self.get_logger().info(
-                f"Audio guardado en: {file_path}speech_recordings/{request.file_name}"
+                f"Audio saved to {file_path}speech_recordings/{request.file_name}"
             )
 
             response.success = True
 
         except Exception as e:
-            self.get_logger().error(f"Error durante el servicio record_audio: {e}")
+            self.get_logger().error(f"record_audio failed: {e}")
             response.success = False
         finally:
             self.is_listening = False
@@ -303,17 +286,17 @@ class MicrophoneNode(Node):
         self, request: SpeechToText.Request, response: SpeechToText.Response
     ):
         """
-        Maneja las solicitudes del servicio para transcribir audio.
+        Record one utterance and return its transcription.
         """
         if not self.service_lock.acquire(blocking=False):
             self.get_logger().warn(
-                "El servicio ya está en uso. Se ignora la nueva solicitud."
+                "Service already in use; ignoring this request."
             )
             response.transcription = "ERROR: Service busy"
             return response
 
         try:
-            self.get_logger().info("Solicitud de Speech-to-Text recibida.")
+            self.get_logger().info("Speech-to-text requested.")
             self.audio_buffer = []
             self.is_listening = True
 
@@ -341,7 +324,7 @@ class MicrophoneNode(Node):
                 sample_rate=self.sample_rate,
             )
             self.get_logger().info(
-                f"Audio guardado en: {file_path}speech_recordings/speech2text.wav"
+                f"Audio saved to {file_path}speech_recordings/speech2text.wav"
             )
 
             self.is_listening = False
@@ -352,12 +335,12 @@ class MicrophoneNode(Node):
 
             transcription = transcribe(f"{file_path}speech_recordings/speech2text.wav")
             self.audio_buffer = []
-            self.get_logger().info(f"Transcripción: '{transcription}'")
+            self.get_logger().info(f"Transcription: '{transcription}'")
 
             response.transcription = transcription
 
         except Exception as e:
-            self.get_logger().error(f"Error durante el servicio speech_to_text: {e}")
+            self.get_logger().error(f"speech_to_text failed: {e}")
             response.transcription = "ERROR: " + str(e)
         finally:
             self.is_listening = False

@@ -203,4 +203,8 @@ qtcreator-*
 COLCON_IGNORE
 AMENT_IGNORE
 
+# Local documentation drafts. Kept out of the repository on purpose;
+# the wiki is maintained separately.
+docs/
+
 # End of https://www.toptal.com/developers/gitignore/api/ros2,python
