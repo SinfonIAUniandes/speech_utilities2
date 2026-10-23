@@ -9,3 +9,7 @@ langchain-openai
 langchain-community
 langchain-ollama
 faster-whisper
+# speech_agent (speech_utilities2/logic/speech_agent)
+deepagents>=0.7.28
+langfuse>=5.0.2
+langgraph-checkpoint-sqlite>=3.1.2
