@@ -1,0 +1,39 @@
+# Pruebas del flujo del Speech Agent con la extensión REST Client (VS Code).
+# Las variables se leen de .env (ignorado por git):
+#   LANGFUSE_PUBLIC_KEY=pk-lf-... / LANGFUSE_SECRET_KEY=sk-lf-... / LANGFUSE_BASE_URL=https://cloud.langfuse.com
+# La sección 1 necesita Ollama arriba: cd ollama && docker compose up -d
+
+@base = http://localhost:11434
+@lf = {{$dotenv LANGFUSE_BASE_URL}}
+@lfpk = {{$dotenv LANGFUSE_PUBLIC_KEY}}
+@lfsk = {{$dotenv LANGFUSE_SECRET_KEY}}
+
+
+# ======================= 1. Ollama =======================
+
+### Modelos descargados (debe incluir llama3.2:3b)
+GET {{base}}/v1/models
+
+### Chat directo al modelo local (sin persona ni memoria)
+POST {{base}}/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "llama3.2:3b",
+  "messages": [{"role": "user", "content": "Hola"}]
+}
+
+
+# ======================= 2. Langfuse (¿subió el seed?) =======================
+
+### Prompts con la etiqueta production (esperas 8: persona, evento/ejemplo, analyzer, response-base, 4 perfiles)
+GET {{lf}}/api/public/v2/prompts?label=production
+Authorization: Basic {{lfpk}}:{{lfsk}}
+
+### Un prompt concreto (la "/" va como %2F)
+GET {{lf}}/api/public/v2/prompts/sinfonia%2Fpersona?label=production
+Authorization: Basic {{lfpk}}:{{lfsk}}
+
+
+
+# El flujo completo (router + memoria) se prueba por ROS 2: ver "Test speech_agent_node" en README.md.

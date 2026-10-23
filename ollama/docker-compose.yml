@@ -1,0 +1,31 @@
+# Ollama (modelos locales) del área de Speech. speech_agent/llm.py le habla por su API OpenAI-compatible.
+#
+#   docker compose up -d
+#   docker compose exec ollama ollama pull llama3.2:3b
+services:
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"        # una sola KV cache de 16k; con más slots no cabe en 6 GB
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_KEEP_ALIVE: "30m"        # no paga la carga del modelo en cada turno
+      OLLAMA_CONTEXT_LENGTH: "16384"  # 6 GB de VRAM: llama3.2:3b (~2 GB) + KV de 16k (~1.9 GB)
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      # Solo en el host. Los nodos ROS 2 (network_mode: host) entran por localhost:11434.
+      - "127.0.0.1:11434:11434"
+    # GPU NVIDIA (requiere nvidia-container-toolkit). Bórralo si no hay GPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+    external: true
+    name: litellm_ollama_data  # volumen heredado del stack anterior; ya tiene llama3.2:3b descargado
