@@ -11,6 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
     ],
+    package_data={'speech_utilities2.logic.speech_agent': ['prompts_snapshot.json']},
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='robotica',
@@ -20,7 +21,8 @@ setup(
     entry_points={
         'console_scripts': [
             'microphone_node = speech_utilities2.microphone_node:main',
-            'conversation_node = speech_utilities2.conversation_node:main'
+            'conversation_node = speech_utilities2.conversation_node:main',
+            'speech_agent_node = speech_utilities2.speech_agent_node:main',
         ],
     },
 )
